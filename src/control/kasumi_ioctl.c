@@ -737,7 +737,10 @@ static int kasumi_dispatch_cmd(unsigned int cmd, void __user *arg)
 		written += n;
 
 		/* maps spoof (read kretprobe or seq_read fallback) */
-		if (kasumi_proc_proxy_registered)
+		if (kasumi_maps_seq_read_registered)
+			n = scnprintf(kbuf + written, buf_size - written,
+				     "maps: kretprobe (seq_read fallback)\n");
+		else if (kasumi_proc_proxy_registered)
 			n = scnprintf(kbuf + written, buf_size - written,
 				     "maps: proxy (open fd read filter)\n");
 		else if (kasumi_mount_hide_vfs_read_registered)
@@ -753,9 +756,6 @@ static int kasumi_dispatch_cmd(unsigned int cmd, void __user *arg)
 		else if (kasumi_mount_hide_pread_fallback_registered)
 			n = scnprintf(kbuf + written, buf_size - written,
 				     "maps: kretprobe (pread64 buffer filter)\n");
-		else if (kasumi_maps_seq_read_registered)
-			n = scnprintf(kbuf + written, buf_size - written,
-				     "maps: kretprobe (seq_read fallback)\n");
 		else
 			n = scnprintf(kbuf + written, buf_size - written, "maps: none\n");
 		written += n;

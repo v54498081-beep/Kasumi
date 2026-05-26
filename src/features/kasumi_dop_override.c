@@ -60,8 +60,6 @@ static char *kasumi_shadow_dname(struct dentry *dentry, char *buf, int buflen)
 	char *out;
 
 	atomic64_inc(&kasumi_hook_stats.dop_dname_entries);
-	if (!kasumi_should_apply_hide_rules())
-		return ERR_PTR(-ENOENT);
 
 	rcu_read_lock();
 	m = kasumi_dop_lookup_rcu(dentry);

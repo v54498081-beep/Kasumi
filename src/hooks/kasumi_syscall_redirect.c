@@ -550,26 +550,54 @@ static long do_openat(const struct pt_regs *regs, kasumi_syscall_hook_fn orig)
 static long h_openat(const struct pt_regs *r)  { return do_openat(r, orig_kernel_openat); }
 static long h_openat2(const struct pt_regs *r) { return do_openat(r, orig_kernel_openat2); }
 
-static long h_statfs(const struct pt_regs *regs)
+static long do_statfs(const struct pt_regs *regs, kasumi_syscall_hook_fn orig)
 {
 	char path[KSM_MAX_LEN_PATHNAME];
-	void __user *buf = (void __user *)(uintptr_t)regs->regs[1];
-	unsigned long s;
+	const char __user *u;
+	void __user *buf;
+	char *target = NULL;
+	unsigned long s = 0;
 	long ret;
 
-	if (!(kasumi_feature_enabled_mask & KSM_FEATURE_STATFS_SPOOF) ||
-	    !kasumi_should_apply_hide_rules())
-		return orig_kernel_statfs(regs);
-	if (copy_from_user(path, (void __user *)(uintptr_t)regs->regs[0],
-			  sizeof(path) - 1))
-		return orig_kernel_statfs(regs);
-	path[sizeof(path) - 1] = 0;
+#if defined(__aarch64__)
+	u = (const char __user *)(uintptr_t)regs->regs[0];
+	buf = (void __user *)(uintptr_t)regs->regs[1];
+#else
+	u = (const char __user *)(uintptr_t)regs->di;
+	buf = (void __user *)(uintptr_t)regs->si;
+#endif
+	if (kasumi_copy_user_path_at(AT_FDCWD, u, path, sizeof(path)) <= 0)
+		return orig(regs);
+	if (path[0] == '/' && kasumi_should_hide(path))
+		return -ENOENT;
 
-	s = kasumi_statfs_resolve_spoof_magic(path);
-	ret = orig_kernel_statfs(regs);
+	if ((kasumi_feature_enabled_mask & KSM_FEATURE_STATFS_SPOOF) &&
+	    kasumi_should_apply_hide_rules())
+		s = kasumi_statfs_resolve_spoof_magic(path);
+
+	if (path[0] == '/') {
+		target = kasumi_resolve_target_slow(path);
+		if (target) {
+			size_t len = strlen(target) + 1;
+			char __user *n = NULL;
+
+			if (len <= KASUMI_PATH_BUF)
+				n = kasumi_userspace_stack_buffer(target, len);
+			if (n)
+				kasumi_set_path_arg0(regs, (unsigned long)n);
+		}
+	}
+
+	ret = orig(regs);
 	if (ret >= 0 && s)
 		kasumi_statfs_apply_spoof(buf, s);
+	kfree(target);
 	return ret;
+}
+
+static long h_statfs(const struct pt_regs *regs)
+{
+	return do_statfs(regs, orig_kernel_statfs);
 }
 
 /*
@@ -580,27 +608,40 @@ static long h_statfs(const struct pt_regs *regs)
  * already opened, which is both faster and not subject to symlink/automount
  * tricks the path-based hook had to compensate for via LOOKUP_FOLLOW.
  */
-static long h_fstatfs(const struct pt_regs *regs)
+static long do_fstatfs(const struct pt_regs *regs, kasumi_syscall_hook_fn orig)
 {
-	void __user *buf = (void __user *)(uintptr_t)regs->regs[1];
-	int fd = (int)regs->regs[0];
+	void __user *buf;
+	int fd;
 	unsigned long s = 0;
 	struct file *file;
 	long ret;
 
+#if defined(__aarch64__)
+	fd = (int)regs->regs[0];
+	buf = (void __user *)(uintptr_t)regs->regs[1];
+#else
+	fd = (int)regs->di;
+	buf = (void __user *)(uintptr_t)regs->si;
+#endif
+
 	if (!(kasumi_feature_enabled_mask & KSM_FEATURE_STATFS_SPOOF) ||
 	    !kasumi_should_apply_hide_rules())
-		return orig_kernel_fstatfs(regs);
+		return orig(regs);
 
 	file = fget(fd);
 	if (file) {
 		s = kasumi_statfs_resolve_spoof_magic_dentry(file->f_path.dentry);
 		fput(file);
 	}
-	ret = orig_kernel_fstatfs(regs);
+	ret = orig(regs);
 	if (ret >= 0 && s)
 		kasumi_statfs_apply_spoof(buf, s);
 	return ret;
+}
+
+static long h_fstatfs(const struct pt_regs *regs)
+{
+	return do_fstatfs(regs, orig_kernel_fstatfs);
 }
 
 #ifdef __NR_statx
@@ -854,6 +895,30 @@ static long __nocfi d_fstatfs(const struct pt_regs *r)
 	return kasumi_call_direct(h_fstatfs, r);
 }
 
+#ifdef __NR_statfs64
+static long h_statfs64(const struct pt_regs *regs)
+{
+	return do_statfs(regs, orig_kernel_statfs64);
+}
+
+static long __nocfi d_statfs64(const struct pt_regs *r)
+{
+	return kasumi_call_direct(h_statfs64, r);
+}
+#endif
+
+#ifdef __NR_fstatfs64
+static long h_fstatfs64(const struct pt_regs *regs)
+{
+	return do_fstatfs(regs, orig_kernel_fstatfs64);
+}
+
+static long __nocfi d_fstatfs64(const struct pt_regs *r)
+{
+	return kasumi_call_direct(h_fstatfs64, r);
+}
+#endif
+
 #ifdef __NR_statx
 static long __nocfi d_statx(const struct pt_regs *r)
 {
@@ -1080,10 +1145,10 @@ int kasumi_syscall_redirect_init(void)
 	kasumi_add_syscall_hook_counted(__NR_statx,   d_statx, &n);
 #endif
 #ifdef __NR_statfs64
-	kasumi_add_syscall_hook_counted(__NR_statfs64, d_statfs, &n);
+	kasumi_add_syscall_hook_counted(__NR_statfs64, d_statfs64, &n);
 #endif
 #ifdef __NR_fstatfs64
-	kasumi_add_syscall_hook_counted(__NR_fstatfs64, d_fstatfs, &n);
+	kasumi_add_syscall_hook_counted(__NR_fstatfs64, d_fstatfs64, &n);
 #endif
 	kasumi_add_syscall_hook_counted(__NR_reboot,  d_reboot, &n);
 	kasumi_add_syscall_hook_counted(__NR_prctl,   d_prctl, &n);
