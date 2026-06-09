@@ -10,6 +10,8 @@
 #ifndef _KASUMI_RUNTIME_H
 #define _KASUMI_RUNTIME_H
 
+#include "kasumi_base.h"
+
 #include <linux/anon_inodes.h>
 #include <linux/bitmap.h>
 #include <linux/fcntl.h>
@@ -100,7 +102,11 @@ extern unsigned long (*kasumi_kallsyms_lookup_name)(const char *name);
 bool kasumi_valid_kernel_addr(unsigned long addr);
 unsigned long kasumi_lookup_name(const char *name);
 unsigned long kasumi_lookup_name_quiet(const char *name);
+unsigned long kasumi_lookup_callable(const char *name);
+unsigned long kasumi_lookup_callable_quiet(const char *name);
 void kasumi_resolve_kallsyms_lookup(void);
+int kasumi_clone_source_inode_attrs(struct inode *target_inode, struct inode *source_inode);
+int kasumi_clone_source_attrs_from_path(struct inode *target_inode, const char *source_path);
 
 typedef bool (*kasumi_ksu_is_allow_uid_fn)(uid_t uid);
 typedef bool (*kasumi_ksu_uid_should_umount_fn)(uid_t uid);
@@ -170,13 +176,18 @@ extern void (*kasumi_call_srcu_ptr)(struct srcu_struct *ssp, struct rcu_head *rh
 				    rcu_callback_t func);
 extern void (*kasumi_srcu_barrier_ptr)(struct srcu_struct *ssp);
 
-static inline void kasumi_path_put(const struct path *path)
+/* KASUMI_NOCFI: these call kallsyms-resolved pointers (path_get/path_put).
+ * Whether a kernel build emits a .cfi_jt thunk for those symbols varies per
+ * build (e.g. present on some Qualcomm 5.15, absent on some Meizu), so
+ * kasumi_lookup_callable may hand back the RAW body address. Calling it from
+ * CFI-instrumented code is a fatal CFI violation; disable the check here. */
+static inline KASUMI_NOCFI void kasumi_path_put(const struct path *path)
 {
 	if (kasumi_path_put_ptr)
 		kasumi_path_put_ptr(path);
 }
 
-static inline void kasumi_path_get(const struct path *path)
+static inline KASUMI_NOCFI void kasumi_path_get(const struct path *path)
 {
 	if (kasumi_path_get_ptr)
 		kasumi_path_get_ptr(path);

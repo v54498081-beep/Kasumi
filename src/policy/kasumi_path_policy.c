@@ -120,7 +120,7 @@ static bool kasumi_current_is_app_zygote(void)
 		      suffix, suffix_len) == 0;
 }
 
-static bool kasumi_apatch_should_apply_hide(uid_t uid)
+static KASUMI_NOCFI bool kasumi_apatch_should_apply_hide(uid_t uid)
 {
 	if (kasumi_uid_is_isolated(uid))
 		return true;
@@ -129,7 +129,8 @@ static bool kasumi_apatch_should_apply_hide(uid_t uid)
 	return kasumi_ap_get_mod_exclude(uid) != 0;
 }
 
-bool kasumi_should_apply_hide_rules(void)
+
+KASUMI_NOCFI bool kasumi_should_apply_hide_rules(void)
 {
 	uid_t uid = __kuid_val(current_uid());
 
@@ -164,7 +165,7 @@ bool kasumi_should_apply_hide_rules(void)
 	return kasumi_uid_in_allowlist(uid);
 }
 
-static bool kasumi_uid_should_umount_strict(uid_t uid)
+static KASUMI_NOCFI bool kasumi_uid_should_umount_strict(uid_t uid)
 {
 	/* uid 0 (root) never sees spoofed view */
 	if (unlikely(uid == 0))
@@ -418,7 +419,7 @@ char *kasumi_resolve_target(const char *pathname)
 	return target;
 }
 
-char *kasumi_resolve_target_slow(const char *pathname)
+KASUMI_NOCFI char *kasumi_resolve_target_slow(const char *pathname)
 {
 	struct kasumi_merge_entry *me;
 	char *src = NULL;
