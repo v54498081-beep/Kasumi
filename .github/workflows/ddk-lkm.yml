@@ -22,7 +22,7 @@ jobs:
     name: Build kasumi_lkm.ko for ${{ inputs.kmi }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/ylarod/ddk:${{ inputs.kmi }}-${{ inputs.ddk_release }}
+      image: gcr.io/android-build-internal/android-ddk:android13-5.15-11831821
       options: --privileged
     env:
       TARGET_ARCH: ${{ inputs.arch }}
