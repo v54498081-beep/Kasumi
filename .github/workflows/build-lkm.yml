@@ -23,7 +23,7 @@ jobs:
     with:
       arch: ${{ matrix.arch }}
       kmi: ${{ matrix.kmi }}
-      ddk_release: "20250311"
+      ddk_release: "20240429"
 
   merge-lkm:
     name: Merge all LKM artifacts
